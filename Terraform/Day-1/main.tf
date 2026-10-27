@@ -80,14 +80,14 @@ resource "aws_instance" "server_a" {
     Environment = "lab"
   }
 
-  /* lifecycle {
+  lifecycle {
     prevent_destroy = true
 
     # Ignore manual changes to the instance type
     ignore_changes = [
       instance_type,
     ]
-  } */
+  }
 }
 
 # 6. Create EC2 in Subnet-B
@@ -103,7 +103,7 @@ resource "aws_instance" "server_b" {
     Environment = "lab"
   }
 
- /*  lifecycle {
+  lifecycle {
     prevent_destroy = true
 
     # Ignore manual changes to the instance type
@@ -112,5 +112,5 @@ resource "aws_instance" "server_b" {
       tags
 
     ]
-  } */
+  }
 }
