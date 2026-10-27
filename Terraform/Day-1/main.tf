@@ -52,7 +52,7 @@ resource "aws_subnet" "subnet_b" {
 resource "aws_security_group" "lab" {
   name        = "terraform-drift-lab-sg"
   description = "Security group for Terraform drift lab"
-  vpc_id      = aws_vpc.lab.id
+  vpc_id      = aws_vpc.main.id
 
   egress {
     from_port   = 0
