@@ -1,263 +1,439 @@
-# Terraform Runbook: Rename an Existing RDS MySQL Instance and Move It to Private Subnets
+**# Terraform Runbook: Rename an Existing RDS MySQL Instance and Move It to Private Subnets**
 
-## Goal
+**## Goal**
 
 Safely update an existing Terraform-managed Amazon RDS for MySQL DB instance so that:
 
-- The **DB instance identifier** changes from `mydb` to a new identifier such as `dev-mydb-99b7c6`.
-- The existing MySQL data is retained.
-- The DB instance becomes private and uses private subnets.
-- The existing EC2 instance can continue connecting to RDS over TCP `3306` through VPC networking.
+\- The **\*\*DB instance identifier\*\*** changes from \`mydb\` to a new identifier such as \`dev-mydb-99b7c6\`.
 
-This runbook is based on the lab details shared in the conversation: Region `us-east-1`, MySQL RDS, Single-AZ at the time of the screenshot, and private subnet `subnet-0a0c7080a3ad24c29`. Confirm all live values in the AWS account before making changes. Do not put database passwords in this document or commit them to Git.
+\- The existing MySQL data is retained.
 
----
+\- The DB instance becomes private and uses private subnets.
 
-## Important corrections before starting
+\- The existing EC2 instance can continue connecting to RDS over TCP \`3306\` through VPC networking.
 
-### 1. RDS instance identifier is not the MySQL database/schema name
 
-- **DB instance identifier** (for example, `mydb`) is the AWS resource identifier.
-- **MySQL database/schema name** is created inside MySQL and is separate.
-- Renaming the RDS DB instance identifier does not rename or erase the MySQL databases stored inside the instance.
+
+This runbook is based on the lab details shared in the conversation: Region \`us-east-1\`, MySQL RDS, Single-AZ at the time of the screenshot, and private subnet \`subnet-0a0c7080a3ad24c29\`. Confirm all live values in the AWS account before making changes. Do not put database passwords in this document or commit them to Git.
+
+**---**
+
+**## Important corrections before starting**
+
+**### 1. RDS instance identifier is not the MySQL database/schema name**
+
+\- **\*\*DB instance identifier\*\*** (for example, \`mydb\`) is the AWS resource identifier.
+
+\- **\*\*MySQL database/schema name\*\*** is created inside MySQL and is separate.
+
+\- Renaming the RDS DB instance identifier does not rename or erase the MySQL databases stored inside the instance.
+
+
 
 AWS supports renaming an RDS DB instance. The instance reboots, and its endpoint changes. Applications must use the new endpoint after the rename.
 
-### 2. Do not switch to a brand-new DB subnet group in the same VPC
 
-For an existing RDS DB instance, AWS documents that you cannot directly change to another DB subnet group in the same VPC. This is why assigning a newly created group such as `dev-rds-subnet-group` can fail even when both groups are in the same VPC.
 
-For a same-VPC public-to-private subnet migration, AWS documents a workaround that updates the **currently attached DB subnet group**, temporarily uses Multi-AZ, and performs a failover. Do not follow the simple instruction “create a new private subnet group and change `db_subnet_group_name`” for this existing instance.
+**### 2. Do not switch to a brand-new DB subnet group in the same VPC**
 
----
+For an existing RDS DB instance, AWS documents that you cannot directly change to another DB subnet group in the same VPC. This is why assigning a newly created group such as \`dev-rds-subnet-group\` can fail even when both groups are in the same VPC.
 
-## Phase 0 — Record the current configuration and take a backup
 
-1. In **RDS → Databases → mydb → Connectivity & security**, record:
-   - Current DB instance identifier.
-   - Current DB subnet group name.
-   - VPC ID.
-   - Current Availability Zone.
-   - Publicly accessible setting.
-   - Multi-AZ setting.
-   - Current endpoint and port.
-   - Attached VPC security groups.
-2. Open **RDS → Snapshots → Take snapshot** and create a manual snapshot. Wait until it is `Available` before continuing.
-3. Verify that the RDS instance is `Available` and that the EC2-to-RDS connection works before making changes.
-4. Do not change the engine version, storage, DB instance class, identifier, and networking all at once. Separate the rename from the subnet migration so each plan is easier to review.
+
+For a same-VPC public-to-private subnet migration, AWS documents a workaround that updates the **\*\*currently attached DB subnet group\*\***, temporarily uses Multi-AZ, and performs a failover. Do not follow the simple instruction “create a new private subnet group and change \`db_subnet_group_name\`” for this existing instance.
+
+**---**
+
+**## Phase 0 — Record the current configuration and take a backup**
+
+
+
+1\. In **\*\*RDS → Databases → mydb → Connectivity & security\*\***, record:
+
+   - Current DB instance identifier.
+
+   - Current DB subnet group name.
+
+   - VPC ID.
+
+   - Current Availability Zone.
+
+   - Publicly accessible setting.
+
+   - Multi-AZ setting.
+
+   - Current endpoint and port.
+
+   - Attached VPC security groups.
+
+2\. Open **\*\*RDS → Snapshots → Take snapshot\*\*** and create a manual snapshot. Wait until it is \`Available\` before continuing.
+
+3\. Verify that the RDS instance is \`Available\` and that the EC2-to-RDS connection works before making changes.
+
+4\. Do not change the engine version, storage, DB instance class, identifier, and networking all at once. Separate the rename from the subnet migration so each plan is easier to review.
+
+
 
 Optional AWS CLI read-only check:
 
-```bash
-aws rds describe-db-instances \
-  --db-instance-identifier mydb \
-  --query "DBInstances[0].[DBInstanceIdentifier,DBSubnetGroup.DBSubnetGroupName,DBSubnetGroup.VpcId,PubliclyAccessible,MultiAZ,Endpoint.Address,AvailabilityZone]" \
-  --output table
-```
+\`\`\`bash
 
-Record the **currently attached** DB subnet group name. Do not assume it is the new `dev-rds-subnet-group`.
+aws rds describe-db-instances \\
 
----
+  --db-instance-identifier mydb \\
 
-## Phase 1 — Rename the existing RDS DB instance with Terraform
+  --query "DBInstances[0].[DBInstanceIdentifier,DBSubnetGroup.DBSubnetGroupName,DBSubnetGroup.VpcId,PubliclyAccessible,MultiAZ,Endpoint.Address,AvailabilityZone]" \\
 
-1. Keep the existing `aws_db_instance` resource address the same: `module.rds.aws_db_instance.default`.
-2. Change the `identifier` input/value to the new unique identifier, for example `dev-mydb-99b7c6`.
-3. Do not create a second `aws_db_instance` resource for the rename.
-4. Check the installed Terraform AWS provider version with `terraform providers` and `terraform version`.
-5. Run:
+  --output table
 
-```bash
+\`\`\`
+
+
+
+Record the **\*\*currently attached\*\*** DB subnet group name. Do not assume it is the new \`dev-rds-subnet-group\`.
+
+
+
+**---**
+
+
+
+**## Phase 1 — Rename the existing RDS DB instance with Terraform**
+
+
+
+1\. Keep the existing \`aws_db_instance\` resource address the same: \`module.rds.aws_db_instance.default\`.
+
+2\. Change the \`identifier\` input/value to the new unique identifier, for example \`dev-mydb-99b7c6\`.
+
+3\. Do not create a second \`aws_db_instance\` resource for the rename.
+
+4\. Check the installed Terraform AWS provider version with \`terraform providers\` and \`terraform version\`.
+
+5\. Run:
+
+
+
+\`\`\`bash
+
 terraform fmt
-terraform validate
-terraform plan
-```
 
-6. Review the RDS resource action:
-   - **In-place update (`~`) for the identifier:** review the full diff, then it is eligible to proceed.
-   - **Replacement (`-/+`) or destroy (`-`): STOP. Do not apply.** Investigate the provider version and every attribute marked ` forces replacement` before proceeding.
-7. After a reviewed in-place plan, apply the rename. Wait for the DB instance to return to `Available`.
-8. Copy the new endpoint from **RDS → Databases → renamed instance → Connectivity & security** and update the EC2/application connection configuration.
+terraform validate
+
+terraform plan
+
+\`\`\`
+
+
+
+6\. Review the RDS resource action:
+
+   - **\*\*In-place update (\`\~\`) for the identifier:\*\*** review the full diff, then it is eligible to proceed.
+
+   - **\*\*Replacement (\`-/+\`) or destroy (\`-\`): STOP. Do not apply.\*\*** Investigate the provider version and every attribute marked \` forces replacement\` before proceeding.
+
+7\. After a reviewed in-place plan, apply the rename. Wait for the DB instance to return to \`Available\`.
+
+8\. Copy the new endpoint from **\*\*RDS → Databases → renamed instance → Connectivity & security\*\*** and update the EC2/application connection configuration.
+
+
 
 AWS notes that the endpoint changes after a rename and that the DB instance is rebooted. The old DNS name is removed; the new DNS name can take several minutes to become effective.
 
----
 
-## Phase 2 — Identify the subnet currently used by the RDS primary
+
+**---**
+
+
+
+**## Phase 2 — Identify the subnet currently used by the RDS primary**
+
+
 
 Do this before editing the existing DB subnet group.
 
-1. Copy the current RDS endpoint from the RDS console.
-2. Resolve the endpoint from a machine with DNS access:
 
-```bash
-nslookup <CURRENT_RDS_ENDPOINT>
-```
 
-3. In **VPC → Subnets**, identify which subnet CIDR contains the resolved private IP address. Record that subnet as the **current primary subnet**.
-4. Confirm the subnet's Availability Zone and confirm the VPC ID matches the RDS instance VPC.
-5. Confirm that `subnet-0a0c7080a3ad24c29` is in that same VPC and is actually private based on its route table. Obtain at least one more private subnet in a different Availability Zone. Prefer two or more private subnets across different AZs.
+1\. Copy the current RDS endpoint from the RDS console.
 
-A subnet name or tag alone does not prove that a subnet is private. Inspect its route table. A route to an Internet Gateway (`igw-...`) indicates a public route; a private subnet commonly uses a NAT Gateway for outbound internet, or has no internet default route.
+2\. Resolve the endpoint from a machine with DNS access:
 
----
 
-## Phase 3 — Prepare the EXISTING DB subnet group
 
-**Do not change `db_subnet_group_name` to the newly created subnet group.** Keep the currently attached DB subnet group name.
+\`\`\`bash
 
-1. Open **RDS → Subnet groups** and edit the DB subnet group currently attached to the DB instance.
-2. Add the verified private subnets from at least two Availability Zones.
-3. Temporarily keep the public subnet that contains the current RDS primary. Do not remove that subnet before the failover.
-4. Follow the AWS same-VPC migration procedure: retain the current primary's public subnet and add the private subnets; remove other public subnets from the group where appropriate, but do not remove the current primary subnet yet.
-5. Save the changes and verify that the existing group now contains the current primary subnet plus the required private subnet choices.
+nslookup \<CURRENT_RDS_ENDPOINT>
 
-### Terraform state ownership
+\`\`\`
+
+
+
+3\. In **\*\*VPC → Subnets\*\***, identify which subnet CIDR contains the resolved private IP address. Record that subnet as the **\*\*current primary subnet\*\***.
+
+4\. Confirm the subnet's Availability Zone and confirm the VPC ID matches the RDS instance VPC.
+
+5\. Confirm that \`subnet-0a0c7080a3ad24c29\` is in that same VPC and is actually private based on its route table. Obtain at least one more private subnet in a different Availability Zone. Prefer two or more private subnets across different AZs.
+
+
+
+A subnet name or tag alone does not prove that a subnet is private. Inspect its route table. A route to an Internet Gateway (\`igw-...\`) indicates a public route; a private subnet commonly uses a NAT Gateway for outbound internet, or has no internet default route.
+
+
+
+**---**
+
+
+
+**## Phase 3 — Prepare the EXISTING DB subnet group**
+
+
+
+**\*\*Do not change \`db_subnet_group_name\` to the newly created subnet group.\*\*** Keep the currently attached DB subnet group name.
+
+
+
+1\. Open **\*\*RDS → Subnet groups\*\*** and edit the DB subnet group currently attached to the DB instance.
+
+2\. Add the verified private subnets from at least two Availability Zones.
+
+3\. Temporarily keep the public subnet that contains the current RDS primary. Do not remove that subnet before the failover.
+
+4\. Follow the AWS same-VPC migration procedure: retain the current primary's public subnet and add the private subnets; remove other public subnets from the group where appropriate, but do not remove the current primary subnet yet.
+
+5\. Save the changes and verify that the existing group now contains the current primary subnet plus the required private subnet choices.
+
+
+
+**### Terraform state ownership**
+
+
 
 The existing DB subnet group must be represented correctly in Terraform before applying configuration changes.
 
-- Run `terraform state list` and inspect the subnet-group resource address, if one exists.
-- Run `terraform state show <SUBNET_GROUP_RESOURCE_ADDRESS>` to confirm which real DB subnet group Terraform currently tracks.
-- If the resource is already tracking the **currently attached** DB subnet group, update that resource's `subnet_ids` to match the transition list above.
-- If the resource block/state currently tracks only the newly created `dev-rds-subnet-group`, do not point the DB instance at it. Reconcile state carefully: remove only the incorrect resource address from Terraform state (this does not delete the AWS subnet group), change the resource configuration to describe the existing attached group, and import the existing group at the correct module address. Example import address, if it matches the actual configuration:
 
-```bash
-terraform import module.rds.aws_db_subnet_group.main <EXISTING_ATTACHED_DB_SUBNET_GROUP_NAME>
-```
 
-Do not run `terraform state rm` or `terraform import` blindly. First confirm the exact address and group name with `terraform state list`, `terraform state show`, and the RDS console. The unused `dev-rds-subnet-group` can be cleaned up only after confirming it is not attached to any DB instance and is no longer needed.
+\- Run \`terraform state list\` and inspect the subnet-group resource address, if one exists.
 
----
+\- Run \`terraform state show \<SUBNET_GROUP_RESOURCE_ADDRESS>\` to confirm which real DB subnet group Terraform currently tracks.
 
-## Phase 4 — Use Multi-AZ failover to move the primary into a private subnet
+\- If the resource is already tracking the **\*\*currently attached\*\*** DB subnet group, update that resource's \`subnet_ids\` to match the transition list above.
+
+\- If the resource block/state currently tracks only the newly created \`dev-rds-subnet-group\`, do not point the DB instance at it. Reconcile state carefully: remove only the incorrect resource address from Terraform state (this does not delete the AWS subnet group), change the resource configuration to describe the existing attached group, and import the existing group at the correct module address. Example import address, if it matches the actual configuration:
+
+
+
+\`\`\`bash
+
+terraform import module.rds.aws_db_subnet_group.main \<EXISTING_ATTACHED_DB_SUBNET_GROUP_NAME>
+
+\`\`\`
+
+
+
+Do not run \`terraform state rm\` or \`terraform import\` blindly. First confirm the exact address and group name with \`terraform state list\`, \`terraform state show\`, and the RDS console. The unused \`dev-rds-subnet-group\` can be cleaned up only after confirming it is not attached to any DB instance and is no longer needed.
+
+
+
+**---**
+
+
+
+**## Phase 4 — Use Multi-AZ failover to move the primary into a private subnet**
+
+
 
 This is the AWS-documented same-VPC workaround. Plan a maintenance window because the steps cause service interruption. Enabling Multi-AZ temporarily adds a standby DB instance and increases cost while enabled.
 
-1. In the RDS console, verify the current DB instance is Single-AZ and set **Publicly accessible = No**. If already set to `No`, leave it that way.
-2. Ensure the existing DB subnet group contains the current primary subnet plus the private subnet options from Phase 3.
-3. Temporarily enable **Multi-AZ** on the existing DB instance. Wait until the modification completes and the DB is `Available`.
-4. Perform **Reboot with failover** from the RDS console (or the equivalent supported operation for the instance).
-5. Wait for the failover to complete. Resolve the endpoint again and verify that the new primary IP belongs to one of the private subnet CIDRs.
-6. After confirming the new primary is in a private subnet, disable Multi-AZ if you do not want to keep it for this lab. Wait for the instance to return to `Available`.
-7. Edit the same existing DB subnet group and remove the old public subnet. Keep only the verified private subnets in at least two Availability Zones.
-8. Verify `Publicly accessible = No`, the primary IP maps to a private subnet, and the DB subnet group contains private subnets only.
+
+
+1\. In the RDS console, verify the current DB instance is Single-AZ and set **\*\*Publicly accessible = No\*\***. If already set to \`No\`, leave it that way.
+
+2\. Ensure the existing DB subnet group contains the current primary subnet plus the private subnet options from Phase 3.
+
+3\. Temporarily enable **\*\*Multi-AZ\*\*** on the existing DB instance. Wait until the modification completes and the DB is \`Available\`.
+
+4\. Perform **\*\*Reboot with failover\*\*** from the RDS console (or the equivalent supported operation for the instance).
+
+5\. Wait for the failover to complete. Resolve the endpoint again and verify that the new primary IP belongs to one of the private subnet CIDRs.
+
+6\. After confirming the new primary is in a private subnet, disable Multi-AZ if you do not want to keep it for this lab. Wait for the instance to return to \`Available\`.
+
+7\. Edit the same existing DB subnet group and remove the old public subnet. Keep only the verified private subnets in at least two Availability Zones.
+
+8\. Verify \`Publicly accessible = No\`, the primary IP maps to a private subnet, and the DB subnet group contains private subnets only.
+
+
 
 Do not remove the old public subnet before failover has moved the primary away from it. Do not delete the VPC subnet itself; remove only its association from the DB subnet group when the migration is complete.
 
----
 
-## Phase 5 — Reconcile the final Terraform configuration
+
+**---**
+
+
+
+**## Phase 5 — Reconcile the final Terraform configuration**
+
+
 
 After the AWS migration has completed, make Terraform describe the final live configuration:
 
-- `identifier` uses the new instance identifier.
-- `db_subnet_group_name` remains the name of the **same existing DB subnet group** used during the migration; do not switch to the newly created group.
-- The Terraform-managed DB subnet group resource lists only the final private subnet IDs.
-- `publicly_accessible = false`.
-- `multi_az` is set to the intended final value (`false` for the original Single-AZ lab, or `true` if you intentionally want to retain Multi-AZ and its cost).
-- `vpc_security_group_ids` references the RDS security group.
 
-The RDS security group should allow inbound MySQL TCP `3306` only from the EC2 security group (or other specifically approved application security groups). Do not allow `0.0.0.0/0` on port `3306`.
+
+\- \`identifier\` uses the new instance identifier.
+
+\- \`db_subnet_group_name\` remains the name of the **\*\*same existing DB subnet group\*\*** used during the migration; do not switch to the newly created group.
+
+\- The Terraform-managed DB subnet group resource lists only the final private subnet IDs.
+
+\- \`publicly_accessible = false\`.
+
+\- \`multi_az\` is set to the intended final value (\`false\` for the original Single-AZ lab, or \`true\` if you intentionally want to retain Multi-AZ and its cost).
+
+\- \`vpc_security_group_ids\` references the RDS security group.
+
+
+
+The RDS security group should allow inbound MySQL TCP \`3306\` only from the EC2 security group (or other specifically approved application security groups). Do not allow \`0.0.0.0/0\` on port \`3306\`.
+
+
 
 Run the following and review every proposed change:
 
-```bash
+
+
+\`\`\`bash
+
 terraform fmt
+
 terraform validate
+
 terraform plan
-```
+
+\`\`\`
+
+
 
 Only apply a plan that matches the intended final state and does not unexpectedly replace or destroy the RDS instance.
 
----
 
-## Phase 6 — Verify the result
 
-In **RDS → Databases → renamed instance → Connectivity & security**, confirm:
+**---**
 
-- New DB instance identifier is shown.
-- Status is `Available`.
-- Publicly accessible is `No`.
-- DB subnet group is the existing group updated for the migration.
-- Its subnet list contains private subnets in at least two Availability Zones.
-- RDS security group allows TCP `3306` from the EC2 security group.
+
+
+**## Phase 6 — Verify the result**
+
+
+
+In **\*\*RDS → Databases → renamed instance → Connectivity & security\*\***, confirm:
+
+
+
+\- New DB instance identifier is shown.
+
+\- Status is \`Available\`.
+
+\- Publicly accessible is \`No\`.
+
+\- DB subnet group is the existing group updated for the migration.
+
+\- Its subnet list contains private subnets in at least two Availability Zones.
+
+\- RDS security group allows TCP \`3306\` from the EC2 security group.
+
+
 
 From EC2:
 
-```bash
-nslookup <NEW_RDS_ENDPOINT>
-nc -zv <NEW_RDS_ENDPOINT> 3306
-mysql -h <NEW_RDS_ENDPOINT> -P 3306 -u <DB_USERNAME> -p
-```
+
+
+\`\`\`bash
+
+nslookup \<NEW_RDS_ENDPOINT>
+
+nc -zv \<NEW_RDS_ENDPOINT> 3306
+
+mysql -h \<NEW_RDS_ENDPOINT> -P 3306 -u \<DB_USERNAME> -p
+
+\`\`\`
+
+
 
 Inside MySQL, verify the existing schemas and sample data:
 
-```sql
+
+
+\`\`\`sql
+
 SHOW DATABASES;
-USE <EXISTING_DATABASE_NAME>;
+
+USE \<EXISTING_DATABASE_NAME>;
+
 SHOW TABLES;
-SELECT COUNT(*) FROM <EXISTING_TABLE_NAME>;
-```
+
+SELECT COUNT(\*) FROM \<EXISTING_TABLE_NAME>;
+
+\`\`\`
+
+
 
 Use the new endpoint after the rename. The database/schema names and table data should remain as they were; the endpoint is what changes during the DB instance rename.
 
----
-
-## Stop conditions and cost precautions
-
-- **Never apply a plan that destroys/recreates the existing DB instance** when your goal is to keep the current database and data.
-- Do not change `db_subnet_group_name` to a different subnet group in the same VPC; update the existing attached group using the documented workaround.
-- Do not remove the current primary's subnet from the DB subnet group before failover.
-- Keep the manual snapshot until the rename and connectivity checks are complete.
-- A temporary Multi-AZ deployment adds standby-instance cost. Disable it after the move if the lab does not need Multi-AZ.
-- The RDS details previously shared showed MySQL 5.7 Extended Support enabled. Check the associated charges and plan a separate engine upgrade; do not combine an engine upgrade with this network migration.
-- The DB password was shared in chat earlier. Rotate it and do not place it in this Markdown file, Terraform source, or Git.
-
----
 
 
-Remember the difference:
-- Child outputs.tf → Exposes values from AWS resources.
-- Root outputs.tf → Exposes values returned by child modules.
-This is the standard pattern for reusable Terraform modules.
+**---**
 
-### 1. What is the issue?
 
-Terraform reported a circular dependency (Cycle error) between the EC2 and RDS modules.
 
-### 2. Why did it happen?
+**## Stop conditions and cost precautions**
 
-Both modules depend on each other's Security Group IDs.
 
-- EC2 module needs the RDS Security Group ID for outbound traffic.
-- RDS module needs the EC2 Security Group ID for inbound traffic.
 
-Dependency diagram:
+\- **\*\*Never apply a plan that destroys/recreates the existing DB instance\*\*** when your goal is to keep the current database and data.
 
+\- Do not change \`db_subnet_group_name\` to a different subnet group in the same VPC; update the existing attached group using the documented workaround.
+
+\- Do not remove the current primary's subnet from the DB subnet group before failover.
+
+\- Keep the manual snapshot until the rename and connectivity checks are complete.
+
+\- A temporary Multi-AZ deployment adds standby-instance cost. Disable it after the move if the lab does not need Multi-AZ.
+
+\- The RDS details previously shared showed MySQL 5.7 Extended Support enabled. Check the associated charges and plan a separate engine upgrade; do not combine an engine upgrade with this network migration.
+
+\- The DB password was shared in chat earlier. Rotate it and do not place it in this Markdown file, Terraform source, or Git.
+
+
+
+
+
+
+## Terraform circular dependency between EC2 and RDS Security Groups
+
+### 1. Issue and cause
+
+Terraform reported a `Cycle` error because each module needed an output from the other:
+
+- EC2 module needed the RDS Security Group ID for EC2 outbound TCP `3306`.
+- RDS module needed the EC2 Security Group ID for RDS inbound TCP `3306`.
+
+```text
+EC2 MODULE  ----needs RDS SG ID---->  RDS MODULE
+    ^                                      |
+    |                                      |
+    +---------needs EC2 SG ID--------------+
+
+                 CYCLE ERROR
 ```
-       EC2 MODULE
-           |
-           | Needs RDS SG ID
-           v
-       RDS MODULE
-           |
-           | Needs EC2 SG ID
-           v
-       EC2 MODULE
-           |
-           v
-       CYCLE ERROR
-```
 
-Terraform cannot decide which module to create first.
+### 2. Resolution 1 — simplest fix for this lab
 
-### 3. What is the resolution?
+Remove the RDS Security Group input from the EC2 module. Keep EC2's existing broad outbound rule, and keep RDS inbound restricted to the EC2 Security Group.
 
-For now, remove the RDS Security Group dependency from the EC2 module.
+**EC2 Security Group — keep this outbound rule:**
 
-Keep EC2 outbound as:
-
-```
+```hcl
 egress {
   from_port   = 0
   to_port     = 0
@@ -266,9 +442,9 @@ egress {
 }
 ```
 
-Keep the RDS inbound rule:
+**RDS Security Group — keep this inbound rule:**
 
-```
+```hcl
 ingress {
   description     = "Allow MySQL from EC2"
   from_port       = 3306
@@ -278,82 +454,60 @@ ingress {
 }
 ```
 
-Final architecture:
+**Child module wiring:**
 
-```
-EC2 MODULE
-    |
-    | Exports EC2 SG ID
-    v
-RDS MODULE
-    |
-    | Allows inbound MySQL 3306
-    v
-RDS INSTANCE
+In `modules/ec2/outputs.tf`, export the EC2 Security Group ID:
 
-EC2 outbound: All traffic (existing rule)
+```hcl
+output "ec2_security_group_id" {
+  value = aws_security_group.ec2-sg.id
+}
 ```
 
-### 4. Commands
+In `modules/rds/variables.tf`, declare the input:
 
-```
-terraform fmt -recursive
-terraform validate
-terraform plan -var-file=tfvars/dev.tfvars
-```
-
-Remember: For least-privilege outbound rules without circular dependencies, manage both Security Groups in a separate shared networking module.
-
-Yes, exactly. Create both Security Groups first in a separate Networking module, then attach them to EC2 and RDS.
-
-But there is one important detail: create the Security Group resources first, and define their cross-referencing rules separately. Otherwise, inline rules can still create a cycle.
-
-### Recommended architecture
-
-```
-              VPC
-               |
-       NETWORKING MODULE
-               |
-        +------+------+
-        |             |
-     EC2 SG          RDS SG
-        |             |
-        +------+------+
-               |
-       Security Group Rules
-               |
-       +-------+-------+
-       |               |
-   EC2 Inbound      RDS Inbound
-   HTTP 80          MySQL 3306
-   SSH 22           Source: EC2 SG
-   Egress 3306
-   Destination: RDS SG
-       |               |
-       v               v
-   EC2 INSTANCE     RDS INSTANCE
+```hcl
+variable "ec2_security_group_id" {
+  type = string
+}
 ```
 
-### Why does this avoid the cycle?
+**Root `main.tf` — call the child modules and pass the EC2 output to RDS:**
 
-The dependency becomes:
+```hcl
+module "ec2_instance" {
+  source = "./modules/ec2"
+  # Keep the other existing EC2 inputs.
+}
 
+module "rds" {
+  source = "./modules/rds"
+
+  ec2_security_group_id = module.ec2_instance.ec2_security_group_id
+  # Keep the other existing RDS inputs.
+}
 ```
-Networking module
-       |
-       +----> EC2 module
-       |
-       +----> RDS module
+
+Remove `rds_security_group_id = module.rds.rds_security_group_id` from the EC2 module call and remove the corresponding variable from the EC2 child module.
+
+**Dependency after the fix:**
+
+```text
+EC2 MODULE  ----exports EC2 SG ID---->  RDS MODULE  ---->  RDS
+
+EC2 outbound: all traffic
+RDS inbound: TCP 3306 from EC2 SG only
 ```
 
-Both modules depend on Networking, but neither depends on the other.
+This removes the cycle. It is the quickest option, but EC2 outbound remains broad.
 
-### Recommended Terraform resources
+### 3. Resolution 2 — shared Networking module (least privilege)
 
-Use separate resources for the cross-Security-Group rules:
+For least-privilege rules in both directions, create both Security Groups and their cross-SG rules in a separate `networking` child module. EC2 and RDS modules receive their own Security Group IDs from Networking; they do not reference each other.
 
-```
+**Networking module — create both Security Groups and the two separate rules:**
+
+```hcl
 resource "aws_vpc_security_group_egress_rule" "ec2_to_rds" {
   security_group_id            = aws_security_group.ec2_sg.id
   referenced_security_group_id = aws_security_group.rds_sg.id
@@ -361,9 +515,7 @@ resource "aws_vpc_security_group_egress_rule" "ec2_to_rds" {
   from_port                    = 3306
   to_port                      = 3306
 }
-```
 
-```
 resource "aws_vpc_security_group_ingress_rule" "rds_from_ec2" {
   security_group_id            = aws_security_group.rds_sg.id
   referenced_security_group_id = aws_security_group.ec2_sg.id
@@ -373,4 +525,114 @@ resource "aws_vpc_security_group_ingress_rule" "rds_from_ec2" {
 }
 ```
 
-Key takeaway: Create both SGs independently → create rules between them → attach SG IDs to EC2 and RDS. This is a clean Terraform design and avoids the circular module dependency.
+Define the EC2 HTTP `80` and SSH `22` ingress rules in this Networking module too. Restrict SSH to your own IP. Do not also define duplicate inline rules for the same ports on these Security Groups.
+
+**Networking child `outputs.tf`:**
+
+```hcl
+output "ec2_security_group_id" {
+  value = aws_security_group.ec2_sg.id
+}
+
+output "rds_security_group_id" {
+  value = aws_security_group.rds_sg.id
+}
+```
+
+**EC2 child module:** declare `ec2_security_group_id` in `modules/ec2/variables.tf` and attach it to the instance:
+
+```hcl
+variable "ec2_security_group_id" {
+  type = string
+}
+
+# Inside aws_instance:
+vpc_security_group_ids = [var.ec2_security_group_id]
+```
+
+**RDS child module:** declare `rds_security_group_id` in `modules/rds/variables.tf` and attach it to the DB instance:
+
+```hcl
+variable "rds_security_group_id" {
+  type = string
+}
+
+# Inside aws_db_instance:
+vpc_security_group_ids = [var.rds_security_group_id]
+```
+
+**Root `main.tf` — call Networking first, then pass its child outputs into EC2 and RDS:**
+
+```hcl
+module "networking" {
+  source = "./modules/networking"
+  vpc_id = data.aws_vpc.default.id
+  # Pass any other required Networking inputs.
+}
+
+module "ec2_instance" {
+  source = "./modules/ec2"
+
+  ec2_security_group_id = module.networking.ec2_security_group_id
+  # Keep the other existing EC2 inputs.
+}
+
+module "rds" {
+  source = "./modules/rds"
+
+  rds_security_group_id = module.networking.rds_security_group_id
+  # Keep the other existing RDS inputs.
+}
+```
+
+**How root calls child outputs:**
+
+```hcl
+module.<CHILD_MODULE_NAME>.<OUTPUT_NAME>
+```
+
+Examples:
+
+- `module.networking.ec2_security_group_id`
+- `module.networking.rds_security_group_id`
+- `module.ec2_instance.ec2_security_group_id`
+
+The output must be declared in the child module's `outputs.tf`. The parent/root module reads it using `module.<module_call_name>.<output_name>`.
+
+**Dependency after the refactor:**
+
+```text
+                ROOT MODULE
+                     |
+              NETWORKING MODULE
+                /          \
+           EC2 SG          RDS SG
+                \          /
+             SG RULES (3306)
+                |          |
+          EC2 MODULE    RDS MODULE
+                |          |
+           EC2 INSTANCE  RDS INSTANCE
+```
+
+Both EC2 and RDS depend on Networking. Neither depends on the other, so the module cycle is removed while EC2 outbound is restricted to the RDS Security Group.
+
+### 4. Which resolution should I use?
+
+| Approach | Use when |
+|---|---|
+| 1. Keep broad EC2 outbound | You want the quickest fix and to continue the current lab. |
+| 2. Shared Networking module | You want least-privilege outbound and a cleaner reusable module design. |
+
+**Recommendation:** Use Resolution 1 for the current lab. Use Resolution 2 when you are ready to refactor the Security Groups into a shared Networking module.
+
+### 5. Validate
+
+```bash
+terraform fmt -recursive
+terraform validate
+terraform plan -var-file=tfvars/dev.tfvars
+```
+
+Review the plan before applying. Do not apply if it unexpectedly replaces or destroys the existing RDS instance.
+
