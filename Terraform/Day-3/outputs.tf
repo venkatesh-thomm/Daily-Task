@@ -30,6 +30,8 @@ output "security_group_id" {
   value       = module.ec2_instance.ec2_security_group_id
 }
 
+
+
 ###Remember the difference:
 #- Child outputs.tf → Exposes values from AWS resources.
 #- Root outputs.tf → Exposes values returned by child modules.

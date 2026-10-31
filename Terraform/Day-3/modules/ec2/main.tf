@@ -24,6 +24,13 @@ resource "aws_security_group" "ec2-sg" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
+  ingress {
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
   egress {
     from_port   = 0
     to_port     = 0
@@ -47,7 +54,10 @@ resource "aws_instance" "ec2" {
   instance_type               = var.instance_type
   associate_public_ip_address = true
   subnet_id                   = var.subnet_id
-  user_data                   = <<-EOF
+  vpc_security_group_ids = [
+    aws_security_group.ec2-sg.id
+  ]
+  user_data = <<-EOF
     #!/bin/bash
     dnf install -y httpd
     systemctl enable --now httpd

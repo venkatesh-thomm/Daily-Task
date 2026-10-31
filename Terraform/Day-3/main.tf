@@ -1,11 +1,11 @@
 module "ec2_instance" {
   source = "./modules/ec2"
 
-  environment   = var.environment
-  instance_name = var.instance_name
-  instance_type = var.instance_type
-  subnet_id     = var.subnet_id
-  common_tags   = var.common_tags
+  environment           = var.environment
+  instance_name         = var.instance_name
+  instance_type         = var.instance_type
+  subnet_id             = var.subnet_id
+  common_tags           = var.common_tags
 }
 
 

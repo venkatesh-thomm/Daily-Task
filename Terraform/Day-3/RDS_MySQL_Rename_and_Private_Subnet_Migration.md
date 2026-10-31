@@ -215,9 +215,91 @@ Use the new endpoint after the rename. The database/schema names and table data 
 
 ---
 
-## AWS references
 
-- [Rename a DB instance — Amazon RDS User Guide](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_RenameInstance.html)
-- [Move an RDS DB instance from a public to private subnet in one VPC — AWS re:Post](https://repost.aws/knowledge-center/rds-move-to-private-subnet)
-- [Updating the VPC for a DB instance — Amazon RDS User Guide](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_VPC.VPC2VPC.html)
-- [ModifyDBInstance API — Amazon RDS](https://docs.aws.amazon.com/AmazonRDS/latest/APIReference/API_ModifyDBInstance.html)
+Remember the difference:
+- Child outputs.tf → Exposes values from AWS resources.
+- Root outputs.tf → Exposes values returned by child modules.
+This is the standard pattern for reusable Terraform modules.
+
+### 1. What is the issue?
+
+Terraform reported a circular dependency (Cycle error) between the EC2 and RDS modules.
+
+### 2. Why did it happen?
+
+Both modules depend on each other's Security Group IDs.
+
+- EC2 module needs the RDS Security Group ID for outbound traffic.
+- RDS module needs the EC2 Security Group ID for inbound traffic.
+
+Dependency diagram:
+
+```
+       EC2 MODULE
+           |
+           | Needs RDS SG ID
+           v
+       RDS MODULE
+           |
+           | Needs EC2 SG ID
+           v
+       EC2 MODULE
+           |
+           v
+       CYCLE ERROR
+```
+
+Terraform cannot decide which module to create first.
+
+### 3. What is the resolution?
+
+For now, remove the RDS Security Group dependency from the EC2 module.
+
+Keep EC2 outbound as:
+
+```
+egress {
+  from_port   = 0
+  to_port     = 0
+  protocol    = "-1"
+  cidr_blocks = ["0.0.0.0/0"]
+}
+```
+
+Keep the RDS inbound rule:
+
+```
+ingress {
+  description     = "Allow MySQL from EC2"
+  from_port       = 3306
+  to_port         = 3306
+  protocol        = "tcp"
+  security_groups = [var.ec2_security_group_id]
+}
+```
+
+Final architecture:
+
+```
+EC2 MODULE
+    |
+    | Exports EC2 SG ID
+    v
+RDS MODULE
+    |
+    | Allows inbound MySQL 3306
+    v
+RDS INSTANCE
+
+EC2 outbound: All traffic (existing rule)
+```
+
+### 4. Commands
+
+```
+terraform fmt -recursive
+terraform validate
+terraform plan -var-file=tfvars/dev.tfvars
+```
+
+Remember: For least-privilege outbound rules without circular dependencies, manage both Security Groups in a separate shared networking module.

@@ -11,7 +11,7 @@ subnet_id = "subnet-0ad3a786fedff2a06"
 
 
 # RDS configuration
-rds_instance_name  = "mydb"
+rds_instance_name  = "rds"
 rds_engine         = "mysql"
 rds_engine_version = "5.7"
 rds_instance_class = "db.t3.micro"
@@ -22,7 +22,7 @@ rds_db_password    = "Password123!"
 # Common tags
 common_tags = {
   Project     = "Terraform-Drift-Lab"
-  Environment = "dev"
+  Environment = "staging"
   ManagedBy   = "Terraform"
   Owner       = "DevOps"
 }
