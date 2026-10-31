@@ -15,8 +15,8 @@ variable "common_tags" {
   description = "A map of common tags to assign to the resource"
   type        = map(string)
   default = {
-    ManagedBy   = "Terraform"
-    Owner       = "DevOps"
+    ManagedBy = "Terraform"
+    Owner     = "DevOps"
   }
 }
 
@@ -34,6 +34,7 @@ variable "instance_name" {
   type        = string
   default     = "my-ec2-instance"
 }
+
 
 variable "subnet_id" {
   type        = string
