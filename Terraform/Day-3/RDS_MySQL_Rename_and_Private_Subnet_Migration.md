@@ -303,3 +303,74 @@ terraform plan -var-file=tfvars/dev.tfvars
 ```
 
 Remember: For least-privilege outbound rules without circular dependencies, manage both Security Groups in a separate shared networking module.
+
+Yes, exactly. Create both Security Groups first in a separate Networking module, then attach them to EC2 and RDS.
+
+But there is one important detail: create the Security Group resources first, and define their cross-referencing rules separately. Otherwise, inline rules can still create a cycle.
+
+### Recommended architecture
+
+```
+              VPC
+               |
+       NETWORKING MODULE
+               |
+        +------+------+
+        |             |
+     EC2 SG          RDS SG
+        |             |
+        +------+------+
+               |
+       Security Group Rules
+               |
+       +-------+-------+
+       |               |
+   EC2 Inbound      RDS Inbound
+   HTTP 80          MySQL 3306
+   SSH 22           Source: EC2 SG
+   Egress 3306
+   Destination: RDS SG
+       |               |
+       v               v
+   EC2 INSTANCE     RDS INSTANCE
+```
+
+### Why does this avoid the cycle?
+
+The dependency becomes:
+
+```
+Networking module
+       |
+       +----> EC2 module
+       |
+       +----> RDS module
+```
+
+Both modules depend on Networking, but neither depends on the other.
+
+### Recommended Terraform resources
+
+Use separate resources for the cross-Security-Group rules:
+
+```
+resource "aws_vpc_security_group_egress_rule" "ec2_to_rds" {
+  security_group_id            = aws_security_group.ec2_sg.id
+  referenced_security_group_id = aws_security_group.rds_sg.id
+  ip_protocol                  = "tcp"
+  from_port                    = 3306
+  to_port                      = 3306
+}
+```
+
+```
+resource "aws_vpc_security_group_ingress_rule" "rds_from_ec2" {
+  security_group_id            = aws_security_group.rds_sg.id
+  referenced_security_group_id = aws_security_group.ec2_sg.id
+  ip_protocol                  = "tcp"
+  from_port                    = 3306
+  to_port                      = 3306
+}
+```
+
+Key takeaway: Create both SGs independently → create rules between them → attach SG IDs to EC2 and RDS. This is a clean Terraform design and avoids the circular module dependency.
