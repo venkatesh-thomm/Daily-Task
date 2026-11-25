@@ -1,0 +1,36 @@
+# Stable DB name the app uses: jdbc:mysql://devopsdb:3306/accounts
+apiVersion: v1
+kind: Service
+metadata:
+  name: devopsdb
+  namespace: vprofile
+spec:
+  type: ClusterIP
+  selector: {app: mysql}
+  ports:
+    - {name: mysql, port: 3306, targetPort: mysql}
+---
+# Headless service that gives the StatefulSet pod its stable DNS (mysql-0.mysql-headless)
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql-headless
+  namespace: vprofile
+spec:
+  clusterIP: None
+  selector: {app: mysql}
+  ports:
+    - {name: mysql, port: 3306}
+---
+# App service - the ALB Ingress sends traffic straight to these pod IPs
+apiVersion: v1
+kind: Service
+metadata:
+  name: vprofile-app
+  namespace: vprofile
+  labels: {app: vprofile-app}
+spec:
+  type: LoadBalancer
+  selector: {app: vprofile-app}
+  ports:
+    - {name: http, port: 80, targetPort: http}

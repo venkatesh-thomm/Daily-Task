@@ -1,0 +1,81 @@
+# MySQL - single primary on an encrypted gp3 EBS volume.
+# replicas MUST stay 1: a 2nd replica would be a separate, empty database, not a copy.
+# Survives pod crashes and node loss in the same AZ (EBS volumes are zonal).
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: mysql
+  namespace: vprofile
+  labels: {app: mysql}
+spec:
+  serviceName: mysql-headless
+  replicas: 1
+  selector:
+    matchLabels: {app: mysql}
+  template:
+    metadata:
+      labels: {app: mysql}
+    spec:
+      terminationGracePeriodSeconds: 60
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999                    # 'mysql' user inside the image
+        runAsGroup: 999
+        fsGroup: 999
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: mysql
+          image: shaikmustafa/king:db   # <-- change to your image
+          args:
+            - --character-set-server=utf8
+            - --collation-server=utf8_general_ci
+          ports:
+            - {name: mysql, containerPort: 3306}
+          env:
+            - name: MYSQL_DATABASE
+              valueFrom: {configMapKeyRef: {name: vprofile-config, key: MYSQL_DATABASE}}
+            - name: MYSQL_ROOT_PASSWORD
+              valueFrom: {secretKeyRef: {name: vprofile-db, key: MYSQL_ROOT_PASSWORD}}
+            - name: MYSQL_USER
+              valueFrom: {secretKeyRef: {name: vprofile-db, key: JDBC_USERNAME}}
+            - name: MYSQL_PASSWORD
+              valueFrom: {secretKeyRef: {name: vprofile-db, key: JDBC_PASSWORD}}
+          resources:
+            requests: {cpu: 250m, memory: 768Mi}
+            limits: {memory: 1Gi}
+          startupProbe:
+            exec:
+              command: ["sh", "-c", "MYSQL_PWD=\"$MYSQL_ROOT_PASSWORD\" mysqladmin ping -h 127.0.0.1 -uroot --silent"]
+            periodSeconds: 5
+            failureThreshold: 60          # first boot imports the seed data
+          readinessProbe:
+            exec:
+              command: ["sh", "-c", "MYSQL_PWD=\"$MYSQL_ROOT_PASSWORD\" mysql -h 127.0.0.1 -uroot -e 'SELECT 1'"]
+            periodSeconds: 10
+            timeoutSeconds: 5
+          livenessProbe:
+            exec:
+              command: ["sh", "-c", "MYSQL_PWD=\"$MYSQL_ROOT_PASSWORD\" mysqladmin ping -h 127.0.0.1 -uroot --silent"]
+            periodSeconds: 20
+            timeoutSeconds: 5
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: {drop: ["ALL"]}
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/mysql
+              subPath: mysql              # avoids the 'lost+found' init error on ext4
+            - {name: run, mountPath: /var/run/mysqld}
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - {name: run, emptyDir: {}}
+        - {name: tmp, emptyDir: {}}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: [ReadWriteOnce]
+        storageClassName: gp3-retain
+        resources:
+          requests:
+            storage: 20Gi

@@ -1,0 +1,10 @@
+<%-- Shared <head> content. Parent page must declare the JSTL "c" taglib. --%>
+<c:set var="contextPath" value="${pageContext.request.contextPath}"/>
+<c:set var="ico" value="${contextPath}/resources/img/icons.svg"/>
+<c:set var="me" value="${pageContext.request.userPrincipal.name}"/>
+<c:set var="isAdmin" value="${me == 'admin_vp'}"/>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#4f46e5">
+<link rel="icon" type="image/svg+xml" href="${contextPath}/resources/img/favicon.svg">
+<link rel="stylesheet" href="${contextPath}/resources/css/app.css">

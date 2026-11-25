@@ -1,0 +1,64 @@
+---
+services:
+  devopsdb:
+    image: shaikmustafa/king:db
+    container_name: devopsdb-cont
+    ports:
+      - "3306:80"
+    networks:
+      - appnetwork
+    volumes:
+      - dbvolume:/var/lib/mysql
+    env_file:
+      - "./mysqldb.env"
+
+    restart: unless-stopped
+
+    mem_limit: 512m
+    cpus: 1.0
+
+    deploy:
+      resources:
+        reservations:
+          cpus: "0.25"
+          memory: 128M
+
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 10s
+      retries: 12
+
+  app:
+    image: shaikmustafa/king:app
+    container_name: app-cont
+    ports:
+      - "1234:8080"
+    networks:
+      - appnetwork
+    volumes:
+      - appvolume:/app
+    env_file:
+      - "./jdbc.env"
+
+    restart: unless-stopped
+
+    mem_limit: 512m
+    cpus: 1.0
+
+    deploy:
+      resources:
+        reservations:
+          cpus: "0.25"
+          memory: 128M
+
+    depends_on:
+      devopsdb:
+        condition: service_healthy
+
+volumes:
+  dbvolume:
+  appvolume:
+
+networks:
+  appnetwork:
+    driver: bridge

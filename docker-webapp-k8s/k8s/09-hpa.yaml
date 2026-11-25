@@ -1,0 +1,22 @@
+# Needs metrics-server (enabled by kops/create-cluster.sh).
+# maxReplicas must fit inside 02-resourcequota.yaml, or scale-up silently stops.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: vprofile-app
+  namespace: vprofile
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: vprofile-app
+  minReplicas: 3                     # never fewer than one pod per AZ
+  maxReplicas: 9
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target: {type: Utilization, averageUtilization: 70}
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300

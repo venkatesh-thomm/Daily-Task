@@ -1,0 +1,31 @@
+<%-- Top navigation for signed-in pages. Needs head.jspf included first. --%>
+<header class="nav">
+  <div class="container">
+    <a class="brand" href="${contextPath}/welcome">
+      <span class="brand-mark"><svg class="icon"><use href="${ico}#i-logo"/></svg></span>
+      <span>DevOps WebApp<small>Cloud-native profile hub</small></span>
+    </a>
+    <nav class="nav-links">
+      <a href="${contextPath}/welcome" class="${activeNav == 'home' ? 'active' : ''}">Dashboard</a>
+      <a href="${contextPath}/user/${me}" class="${activeNav == 'profile' ? 'active' : ''}">My profile</a>
+      <a href="${contextPath}/upload" class="${activeNav == 'photo' ? 'active' : ''}">Photo</a>
+      <c:if test="${isAdmin}">
+        <a href="${contextPath}/users" class="${activeNav == 'users' ? 'active' : ''}">Users</a>
+      </c:if>
+    </nav>
+    <div class="nav-right">
+      <c:if test="${not empty me}">
+        <div class="nav-user">
+          <span class="avatar avatar-sm"><c:out value="${fn:toUpperCase(fn:substring(me, 0, 1))}"/></span>
+          <span><c:out value="${me}"/></span>
+        </div>
+        <form id="logoutForm" method="POST" action="${contextPath}/logout" style="margin:0">
+          <input type="hidden" name="${_csrf.parameterName}" value="${_csrf.token}"/>
+          <button class="btn btn-ghost btn-icon" type="submit" title="Sign out" aria-label="Sign out">
+            <svg class="icon"><use href="${ico}#i-logout"/></svg>
+          </button>
+        </form>
+      </c:if>
+    </div>
+  </div>
+</header>

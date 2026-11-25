@@ -1,0 +1,37 @@
+# Namespace budget. Sized so the HPA can reach maxReplicas (9 app pods)
+# plus 1 MySQL pod, with headroom for one extra pod during rolling updates:
+#   app   9 x (250m CPU / 768Mi req, 1Gi limit)  = 2.25 CPU / 6.75Gi req, 9Gi limit
+#   mysql 1 x (250m CPU / 768Mi req, 1Gi limit)
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: vprofile-quota
+  namespace: vprofile
+spec:
+  hard:
+    requests.cpu: "4"
+    requests.memory: 10Gi
+    limits.memory: 14Gi
+    pods: "20"
+    persistentvolumeclaims: "2"
+    requests.storage: 50Gi
+    services.loadbalancers: "1"     # traffic enters only through the ALB Ingress
+    services.nodeports: "1"
+---
+# Defaults for any container that doesn't declare resources, so the quota
+# never rejects a pod just because requests/limits were left out.
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: vprofile-defaults
+  namespace: vprofile
+spec:
+  limits:
+    - type: Container
+      defaultRequest:
+        cpu: 100m
+        memory: 128Mi
+      default:
+        memory: 512Mi
+      max:
+        memory: 2Gi

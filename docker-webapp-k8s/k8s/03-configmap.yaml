@@ -1,0 +1,10 @@
+# Non-secret runtime config. Spring resolves environment variables before
+# application.properties, so JDBC_URL overrides jdbc.url in the WAR.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: vprofile-config
+  namespace: vprofile
+data:
+  JDBC_URL: "jdbc:mysql://devopsdb:3306/accounts?useUnicode=true&characterEncoding=UTF-8&zeroDateTimeBehavior=convertToNull&useSSL=false"
+  MYSQL_DATABASE: "accounts"

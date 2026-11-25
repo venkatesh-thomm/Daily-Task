@@ -1,0 +1,12 @@
+# Encrypted gp3 EBS volumes via the EBS CSI driver (installed by kops).
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: gp3-retain
+provisioner: ebs.csi.aws.com
+parameters:
+  type: gp3
+  encrypted: "true"
+reclaimPolicy: Retain                  # deleting the PVC never deletes the data
+volumeBindingMode: WaitForFirstConsumer  # create the volume in the pod's AZ
+allowVolumeExpansion: true

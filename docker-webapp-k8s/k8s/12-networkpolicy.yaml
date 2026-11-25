@@ -1,0 +1,40 @@
+# Enforced by Calico. Deny all incoming traffic, then open only what's needed.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+  namespace: vprofile
+spec:
+  podSelector: {}
+  policyTypes: [Ingress]
+---
+# App: port 8080 open to the ALB (which targets pod IPs directly)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: app-allow-http
+  namespace: vprofile
+spec:
+  podSelector:
+    matchLabels: {app: vprofile-app}
+  policyTypes: [Ingress]
+  ingress:
+    - ports:
+        - {protocol: TCP, port: 8080}
+---
+# MySQL: only the app pods may connect
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: mysql-allow-app
+  namespace: vprofile
+spec:
+  podSelector:
+    matchLabels: {app: mysql}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels: {app: vprofile-app}
+      ports:
+        - {protocol: TCP, port: 3306}

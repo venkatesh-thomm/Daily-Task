@@ -1,0 +1,11 @@
+# Node drains and kops rolling-updates always leave at least 2 app pods serving.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: vprofile-app
+  namespace: vprofile
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels: {app: vprofile-app}
+# No PDB for MySQL on purpose: with 1 replica it would block every node drain.

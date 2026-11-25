@@ -1,0 +1,13 @@
+<%-- Footer: shows which pod/container served the request (handy for HA demos). --%>
+<%
+  String servedBy = System.getenv("HOSTNAME");
+  if (servedBy == null || servedBy.isEmpty()) { servedBy = "local"; }
+%>
+<footer class="footer${footerDark ? ' footer-dark' : ''}">
+  <div class="container">
+    <span>&copy; DevOps WebApp &middot; Built with Docker &amp; Kubernetes</span>
+    <span class="pod" title="Pod / container that served this page">
+      <span class="dot dot-live"></span> served by <%= servedBy.replaceAll("[^A-Za-z0-9._-]", "") %>
+    </span>
+  </div>
+</footer>
